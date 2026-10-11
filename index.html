@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Direct Video Downloader</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 0 16px;
+      background: #111;
+      color: #eee;
+    }
+    h1 { font-size: 1.5rem; }
+    .warn {
+      background: #3a1f1f;
+      border: 1px solid #a33;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      line-height: 1.4;
+    }
+    input, button {
+      font-size: 16px;
+      padding: 12px;
+      width: 100%;
+      box-sizing: border-box;
+      margin: 6px 0;
+      border-radius: 8px;
+      border: 1px solid #444;
+      background: #1c1c1c;
+      color: #eee;
+    }
+    button {
+      cursor: pointer;
+      background: #2d6cdf;
+      border: none;
+      font-weight: 600;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    progress { width: 100%; height: 18px; margin-top: 10px; }
+    #status {
+      margin-top: 12px;
+      white-space: pre-wrap;
+      font-size: 0.95rem;
+      line-height: 1.4;
+    }
+    .row { display: flex; gap: 8px; }
+    .row input { flex: 2; }
+    .row button { flex: 1; }
+  </style>
+</head>
+<body>
+  <h1>Direct Video Downloader</h1>
+
+  <div class="warn">
+    <strong>Legal use only.</strong><br>
+    Works only for direct video file URLs on servers that allow CORS.<br>
+    Does <strong>not</strong> work for YouTube, porn sites, Netflix, DRM, HLS/DASH, or any protected platform.
+  </div>
+
+  <input id="url" type="url" placeholder="https://example.com/video.mp4">
+  <div class="row">
+    <input id="filename" type="text" placeholder="filename.mp4 (optional)">
+    <button id="btn">Download</button>
+  </div>
+
+  <progress id="bar" value="0" max="100"></progress>
+  <div id="status"></div>
+
+  <script>
+    const urlInput = document.getElementById('url');
+    const filenameInput = document.getElementById('filename');
+    const btn = document.getElementById('btn');
+    const bar = document.getElementById('bar');
+    const status = document.getElementById('status');
+
+    btn.addEventListener('click', async () => {
+      const url = urlInput.value.trim();
+      if (!url) return;
+
+      let filename = filenameInput.value.trim();
+      if (!filename) {
+        try {
+          filename = new URL(url).pathname.split('/').pop() || 'video.mp4';
+        } catch {
+          filename = 'video.mp4';
+        }
+      }
+
+      btn.disabled = true;
+      bar.value = 0;
+      status.textContent = 'Fetching...';
+
+      try {
+        const res = await fetch(url, { mode: 'cors' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        const total = Number(res.headers.get('content-length')) || 0;
+        const reader = res.body.getReader();
+        const chunks = [];
+        let received = 0;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          chunks.push(value);
+          received += value.length;
+
+          if (total) {
+            const pct = Math.round((received / total) * 100);
+            bar.value = pct;
+            status.textContent = `Downloading... ${pct}% (${(received / 1048576).toFixed(2)} MB)`;
+          } else {
+            status.textContent = `Downloading... ${(received / 1048576).toFixed(2)} MB`;
+          }
+        }
+
+        const blob = new Blob(chunks);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+
+        bar.value = 100;
+        status.textContent = 'Download complete.';
+      } catch (err) {
+        status.textContent =
+          'Failed: ' + err.message +
+          '\n\nThis usually means CORS blocked it, the URL is not a direct video file, or the site uses DRM/streaming.';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
